@@ -86,7 +86,7 @@ public class TestSuiteBase extends DocumentClientTest {
     protected static final int SHUTDOWN_TIMEOUT = 12000;
     protected static final int SUITE_SETUP_TIMEOUT = 120000;
     protected static final int SUITE_SHUTDOWN_TIMEOUT = 60000;
-    protected static final int TIMEOUT = 40000;
+    protected static final int TIMEOUT = 400000;
     protected static final int WAIT_REPLICA_CATCH_UP_IN_MILLIS = 4000;
     protected static final ConsistencyLevel accountConsistency;
     protected static final ImmutableList<String> preferredLocations;
@@ -169,7 +169,7 @@ public class TestSuiteBase extends DocumentClientTest {
             DatabaseForTest dbForTest = DatabaseForTest.create(DatabaseManagerImpl.getInstance(houseKeepingClient));
             SHARED_DATABASE = dbForTest.createdDatabase;
             RequestOptions options = new RequestOptions();
-            options.setOfferThroughput(10100);
+            options.setOfferThroughput(100000);
             SHARED_MULTI_PARTITION_COLLECTION = createCollection(houseKeepingClient, SHARED_DATABASE.getId(), getCollectionDefinitionWithRangeRangeIndex(), options);
             SHARED_SINGLE_PARTITION_COLLECTION = createCollection(houseKeepingClient, SHARED_DATABASE.getId(), getCollectionDefinition(), null);
             SHARED_SINGLE_PARTITION_COLLECTION_WITHOUT_PARTITION_KEY = createCollection(houseKeepingClient, SHARED_DATABASE.getId(), getCollectionDefinitionSinglePartitionWithoutPartitionKey());
@@ -872,6 +872,11 @@ public class TestSuiteBase extends DocumentClientTest {
         return clientBuildersWithDirectSession(toArray(protocols));
     }
 
+    @DataProvider
+    public static Object[][] clientBuildersWithDirectStrong() {
+        return clientBuildersWithDirectStrong(toArray(protocols));
+    }
+
     static Protocol[] toArray(List<Protocol> protocols) {
         return protocols.toArray(new Protocol[0]);
     }
@@ -879,6 +884,12 @@ public class TestSuiteBase extends DocumentClientTest {
     private static Object[][] clientBuildersWithDirectSession(Protocol... protocols) {
         return clientBuildersWithDirect(new ArrayList<ConsistencyLevel>() {{
             add(ConsistencyLevel.Session);
+        }}, protocols);
+    }
+
+    private static Object[][] clientBuildersWithDirectStrong(Protocol... protocols) {
+        return clientBuildersWithDirect(new ArrayList<ConsistencyLevel>() {{
+            add(ConsistencyLevel.Strong);
         }}, protocols);
     }
 

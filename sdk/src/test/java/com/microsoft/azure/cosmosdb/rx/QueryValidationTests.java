@@ -27,6 +27,7 @@ import com.microsoft.azure.cosmosdb.Document;
 import com.microsoft.azure.cosmosdb.DocumentCollection;
 import com.microsoft.azure.cosmosdb.FeedOptions;
 import com.microsoft.azure.cosmosdb.FeedResponse;
+import com.microsoft.azure.cosmosdb.rx.internal.Strings;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Factory;
@@ -34,8 +35,12 @@ import org.testng.annotations.Test;
 import rx.Observable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -45,11 +50,13 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class QueryValidationTests extends TestSuiteBase {
-    private static final int NUM_DOCUMENTS = 1000;
+    private static final int NUM_DOCUMENTS = 10;
     private Random random;
     private Database createdDatabase;
     private DocumentCollection createdCollection;
     private List<Document> createdDocuments = new ArrayList<>();
+    private Random randomGenerator = new Random();
+
 
     private AsyncDocumentClient client;
 
@@ -84,6 +91,69 @@ public class QueryValidationTests extends TestSuiteBase {
 
     }
 
+    @Test(groups = {"simple"}, timeOut = TIMEOUT)
+    public void orderByQueryForAdobe() {
+        /*
+        The idea here is to query documents in pages, query all the documents(with pagesize as num_documents and compare
+         the results.
+         */
+        String query = "SELECT * FROM c WHERE c.mypk IN ('6b36e130-c5d7-11e9-949c-0da8d50fcac1','7dad4e50-dbc9-11e9-aeff-db213dcc941f','ade028c0-f174-11e9-b395-132c994d1db1','7f550ce0-3608-11ea-a3dc-33f5bc717ff3','8e3dca60-6daf-11ea-aee0-4db17ee10871') ORDER BY c._ts DESC";
+        String responseContinuationToken = null;
+        List<Document> totalDocuments = new ArrayList<>();
+
+        do {
+            int requiredPageSize = 3;
+            boolean shouldContinue = true;
+
+            while(shouldContinue) {
+                FeedResponse<Document> documentsPaged = singlePageQueryWithContinuationToken(query, requiredPageSize, responseContinuationToken);
+                List<Document> reformattedDocuments = Optional.ofNullable(documentsPaged.getResults())
+                        .orElse(Collections.emptyList())
+                        .stream()
+                        .collect(Collectors.toList());
+                totalDocuments.addAll(reformattedDocuments);
+
+                responseContinuationToken = documentsPaged.getResponseContinuation();
+                System.out.println(responseContinuationToken);
+                if (requiredPageSize > reformattedDocuments.size() && !Strings.isNullOrEmpty(responseContinuationToken)) {
+                    requiredPageSize = requiredPageSize - reformattedDocuments.size();
+                    logger.info("balance item size = [{}] required to be fetched from next partition", requiredPageSize);
+                } else {
+                    shouldContinue = false;
+                }
+            }
+        } while (responseContinuationToken != null);
+
+
+        for (Document doc: totalDocuments
+             ) {
+                System.out.println(doc.getId());
+        }
+
+          assertThat(totalDocuments.size()).isEqualTo(NUM_DOCUMENTS);
+
+    }
+
+    private FeedResponse<Document> singlePageQueryWithContinuationToken(String query, int pageSize, String continuationToken) {
+        logger.info("querying: " + query);
+
+        FeedOptions options = new FeedOptions();
+        options.setEmitVerboseTracesInQuery(true);
+        options.setMaxItemCount(pageSize);
+        options.setEnableCrossPartitionQuery(true);
+
+        //options.setMaxDegreeOfParallelism(10);
+        options.setRequestContinuation(continuationToken);
+        Observable<FeedResponse<Document>> queryObservable = client.queryDocuments(getCollectionLink(), query,
+                options);
+
+        // Observable to Iterator
+        //final Iterator<FeedResponse<Document>> it = queryObservable.toBlocking().getIterator();
+        final FeedResponse<Document> currentPage = queryObservable.first().toBlocking().single();
+        // final FeedResponse<Document> currentPage = it.next();
+        return currentPage;
+    }
+
     private List<Document> queryWithContinuationTokens(String query, int pageSize) {
         logger.info("querying: " + query);
         String requestContinuation = null;
@@ -92,9 +162,12 @@ public class QueryValidationTests extends TestSuiteBase {
         List<Document> receivedDocuments = new ArrayList<Document>();
         do {
             FeedOptions options = new FeedOptions();
+            options.setEmitVerboseTracesInQuery(true);
+
             options.setMaxItemCount(pageSize);
             options.setEnableCrossPartitionQuery(true);
-            options.setMaxDegreeOfParallelism(2);
+
+            //options.setMaxDegreeOfParallelism(10);
             options.setRequestContinuation(requestContinuation);
             Observable<FeedResponse<Document>> queryObservable = client.queryDocuments(getCollectionLink(), query,
                                                                                        options);
@@ -139,15 +212,91 @@ public class QueryValidationTests extends TestSuiteBase {
     }
 
     private Document getDocumentDefinition(String documentId) {
-        String uuid = UUID.randomUUID().toString();
-        Document doc = new Document(String.format("{ "
-                                                          + "\"id\": \"%s\", "
-                                                          + "\"pkey\": \"%s\", "
-                                                          + "\"propInt\": %s, "
-                                                          + "\"sgmts\": [[6519456, 1471916863], [2498434, 1455671440]]"
-                                                          + "}"
-                , documentId, uuid, random.nextInt(NUM_DOCUMENTS/2))); 
+        ArrayList<String> partitionKeyList = new ArrayList<String>();
+        partitionKeyList.add("6b36e130-c5d7-11e9-949c-0da8d50fcac1");
+        partitionKeyList.add("7dad4e50-dbc9-11e9-aeff-db213dcc941f");
+        partitionKeyList.add("ade028c0-f174-11e9-b395-132c994d1db1");
+        partitionKeyList.add("7f550ce0-3608-11ea-a3dc-33f5bc717ff3");
+        partitionKeyList.add("8e3dca60-6daf-11ea-aee0-4db17ee10871");
+
+        int index = randomGenerator.nextInt(partitionKeyList.size());
+        String uuid = partitionKeyList.get(index);
+//         String uuid = UUID.randomUUID().toString();
+        String sampleDocument = "{ " +
+                "            \"createdAt\": 1590495459390," +
+                "            \"updatedAt\": 1590495459390," +
+                "            \"createdBy\": \"ac@AdobeID\"," +
+                "            \"updatedBy\": \"ac@AdobeID\"," +
+                "            \"createdClient\": \"ac\"," +
+                "            \"updatedClient\": \"ac\"," +
+                "            \"mypk\": \"" + uuid + "\"," +
+                "            \"sandName\": \"prod\"," +
+                "            \"id\": \"" + documentId + "\"," +
+                "            \"name\": \"IT-S3 Flow\"," +
+                "            \"description\": \"Flow created during integration tests.\"," +
+                "            \"spec\": { " +
+                "                \"id\": \"feae26d8-4968-4074-b2ca-d182fc050729\"," +
+                "                \"version\": \"1.0\"" +
+                "            }," +
+                "            \"state\": \"enabled\"," +
+                "            \"version\": \"8002d1c0-0000-0200-0000-5ecd08e30000\"," +
+                "            \"etag\": \"8002d1c0-0000-0200-0000-5ecd08e30000\"," +
+                "            \"sids\": [" +
+                "                \"16849dc3-522f-41b2-849d-c3522f91b29d\"" +
+                "            ]," +
+                "            \"tids\": [" +
+                "                \"737c65a8-b272-4465-bc65-a8b272646558\"" +
+                "            ],\n" +
+                "            \"attri\": {" +
+                "                \"scs\": [" +
+                "                    {\n" +
+                "                        \"id\": \"16849dc3-522f-41b2-849d-c3522f91b29d\"," +
+                "                        \"connectionSpec\": {" +
+                "                            \"id\": \"ecadc60c-7455-4d87-84dc-2a0e293d997b\"," +
+                "                            \"version\": \"1.0\"" +
+                "                        }" +
+                "                    }" +
+                "                ]," +
+                "                \"tcs\": [" +
+                "                    {" +
+                "                        \"id\": \"737c65a8-b272-4465-bc65-a8b272646558\"," +
+                "                        \"connectionSpec\": {" +
+                "                            \"id\": \"c604ff05-7f1a-43c0-8e18-33bf874cb11c\"," +
+                "                            \"version\": \"1.0\"" +
+                "                        }" +
+                "                    }" +
+                "                ]" +
+                "            }," +
+                "            \"params\": {" +
+                "                \"backfill\": true," +
+                "                \"startTime\": \"1573891635\"," +
+                "                \"interval\": 527040," +
+                "                \"frequency\": \"minutes\"" +
+                "            }," +
+                "            \"formations\": [" +
+                "                {" +
+                "                    \"name\": \"Copy\"," +
+                "                    \"params\": {}" +
+                "                }," +
+                "                {" +
+                "                    \"name\": \"Mapping\"," +
+                "                    \"params\": {" +
+                "                        \"mappingId\": \"debfc0a0f41646e0bf6ad6a3636010d2\"," +
+                "                        \"mappingVersion\": \"0\"" +
+                "                    }" +
+                "                }" +
+                "            ]," +
+                "            \"abc\": \"/flows/499ec129-e60c-4c6f-9ec1-29e60cac6f24/runs\"" +
+                "        }";
+//        Document doc = new Document(String.format("{ "
+//                                                          + "\"id\": \"%s\", "
+//                                                          + "\"pkey\": \"%s\", "
+//                                                          + "\"propInt\": %s, "
+//                                                          + "\"sgmts\": [[6519456, 1471916863], [2498434, 1455671440]]"
+//                                                          + "}"
+//                , documentId, uuid, random.nextInt(NUM_DOCUMENTS/2)));
         // Doing NUM_DOCUMENTS/2 just to ensure there will be good number of repetetions.
+        Document doc = new Document(sampleDocument);
         return doc;
     }
 

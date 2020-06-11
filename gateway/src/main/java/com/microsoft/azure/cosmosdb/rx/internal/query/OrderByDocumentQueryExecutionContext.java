@@ -32,6 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 
+import com.microsoft.azure.cosmosdb.PartitionKey;
 import org.apache.commons.lang3.NotImplementedException;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
@@ -203,7 +204,7 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
             this.initializeRangeWithContinuationTokenAndFilter(partitionKeyRanges,
                     /* startInclusive */ 0,
                     /* endExclusive */ targetIndex,
-                    /* continuationToken */ null,
+                    /* continuationToken */ orderByContinuationToken,
                     filterForRangesLeftOfTheTargetRange,
                     initialPageSize);
 
@@ -212,7 +213,7 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
             this.initializeRangeWithContinuationTokenAndFilter(partitionKeyRanges,
                     /* startInclusive */ targetIndex,
                     /* endExclusive */ targetIndex + 1,
-                    null,
+                    orderByContinuationToken,
                     filterForTargetRange,
                     initialPageSize);
 
@@ -221,7 +222,7 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
             this.initializeRangeWithContinuationTokenAndFilter(partitionKeyRanges,
                     /* startInclusive */ targetIndex + 1,
                     /* endExclusive */ partitionKeyRanges.size(),
-                    /* continuationToken */ null,
+                    /* continuationToken */ orderByContinuationToken,
                     filterForRangesRightOfTheTargetRange,
                     initialPageSize);
         }
@@ -238,14 +239,23 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
             List<PartitionKeyRange> partitionKeyRanges,
             int startInclusive,
             int endExclusive,
-            String continuationToken,
+            OrderByContinuationToken continuationToken,
             String filter,
             int initialPageSize) {
         Map<PartitionKeyRange, String> partitionKeyRangeToContinuationToken = new HashMap<PartitionKeyRange, String>();
         for (int i = startInclusive; i < endExclusive; i++) {
             PartitionKeyRange partitionKeyRange = partitionKeyRanges.get(i);
-            partitionKeyRangeToContinuationToken.put(partitionKeyRange,
-                    continuationToken);
+
+            if (partitionKeyRange.getMinInclusive().compareTo(continuationToken.getCompositeContinuationToken().getRange().getMin()) >= 0
+                    && partitionKeyRange.getMaxExclusive().compareTo(continuationToken.getCompositeContinuationToken().getRange().getMax()) <= 0)
+            {
+                partitionKeyRangeToContinuationToken.put(partitionKeyRange,
+                        continuationToken.getCompositeContinuationToken().getToken());
+            }
+            else {
+                partitionKeyRangeToContinuationToken.put(partitionKeyRange, null);
+            }
+            //partitionKeyRangeToContinuationToken.put(partitionKeyRange, null);
         }
 
         super.initialize(collectionRid,
@@ -590,6 +600,7 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
         String backendContinuationToken = orderByRowResult.getSourceBackendContinuationToken();
         Range<String> range = orderByRowResult.getSourcePartitionKeyRange().toRange();
 
+        // TODO: Annie this is wrong if multiple documents has the same value
         boolean inclusive = true;
         CompositeContinuationToken compositeContinuationToken = new CompositeContinuationToken(backendContinuationToken,
                 range);
