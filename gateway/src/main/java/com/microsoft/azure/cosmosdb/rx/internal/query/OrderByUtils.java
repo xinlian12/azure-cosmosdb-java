@@ -25,6 +25,7 @@ package com.microsoft.azure.cosmosdb.rx.internal.query;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -102,7 +103,12 @@ class OrderByUtils {
                 }
                 List<T> results = documentProducerFeedResponse.pageResult.getResults();
                 OrderByContinuationToken orderByContinuationToken = targetRangeToOrderByContinuationTokenMap.get(documentProducerFeedResponse.sourcePartitionKeyRange.getId());
+                System.out.println("Annie: " + "SourcePartitionKeyRange: " + documentProducerFeedResponse.sourcePartitionKeyRange + "ResultSize: " + results.size() + " ContinuationToken: " + orderByContinuationToken);
+                // System.out.println("SourcePartitionKeyRange: " + documentProducerFeedResponse.sourcePartitionKeyRange);
+               // System.out.println("Result size: " + results.size() + " ContinuationToken is: " + orderByContinuationToken);
                 if (orderByContinuationToken != null) {
+                    AtomicInteger skipCount = new AtomicInteger(orderByContinuationToken.getSkip());
+                    System.out.println("Atomic skip count: " + skipCount.get());
                     Pair<Boolean, ResourceId> booleanResourceIdPair = ResourceId.tryParse(orderByContinuationToken.getRid());
                     if (!booleanResourceIdPair.getLeft()) {
                         return Observable.error(new BadRequestException(String.format("Invalid Rid in the continuation token %s for OrderBy~Context.",
@@ -130,11 +136,12 @@ class OrderByUtils {
                                     cmp = ItemComparator.getInstance().compare(orderByContinuationToken.getOrderByItems()[i].getItem(),
                                             queryItems.get(i).getItem());
                                     if (cmp != 0) {
-                                        cmp = sortOrders.get(i).equals(SortOrder.Descending) ? -cmp : cmp;
+                                        cmp = sortOrders.get(i).equals(SortOrder.Ascending) ? cmp : -cmp;
                                         break;
                                     }
                                 }
-                                
+                                System.out.println("cmp: " + cmp);
+
                                 if (cmp == 0) {
                                     // Once the item matches the order by items from the continuation tokens
                                     // We still need to remove all the documents that have a lower rid in the rid sort order.
@@ -149,7 +156,12 @@ class OrderByUtils {
                                     if (sortOrders.iterator().next().equals(SortOrder.Descending)) {
                                         cmp = -cmp;
                                     }
-                                    return (cmp <= 0);
+                                    // We might have passed the item due to deletions and filters.
+                                    // We also have a skip count for JOINs
+
+                                    System.out.println("cmp: " + cmp + "skipCount" + skipCount.decrementAndGet() );
+                                    return (cmp < 0 || (cmp == 0 && skipCount.get() <= 0));
+                                    // return cmp <= 0 && skipCount.getAndDecrement() <= 0;
                                 }
                                 return true;
 

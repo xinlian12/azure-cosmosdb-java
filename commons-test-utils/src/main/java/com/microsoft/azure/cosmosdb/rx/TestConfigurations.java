@@ -47,13 +47,13 @@ public final class TestConfigurations {
             System.getProperty("ACCOUNT_KEY", 
                     StringUtils.defaultString(Strings.emptyToNull(
                             System.getenv().get("ACCOUNT_KEY")),
-                            "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="));
+                            "hoTaUW11OCQ16P4Qp7tUM3C4xk20vTQZbh0eSTZHwTPyAQNMwlYqim63ltJJLuhUeDLC081r34vHOn8PHlGmug=="));
 
     public static String HOST =
             System.getProperty("ACCOUNT_HOST",
                     StringUtils.defaultString(Strings.emptyToNull(
                             System.getenv().get("ACCOUNT_HOST")),
-                            "https://localhost:443/"));
+                            "https://cosmos-sdk-tests.documents.azure.com:443/"));
 
     public static String CONSISTENCY =
             System.getProperty("ACCOUNT_CONSISTENCY",

@@ -44,10 +44,11 @@ public final class OrderByContinuationToken extends JsonSerializable {
     private static final String OrderByItemsPropetryName = "orderByItems";
     private static final String RidPropertyName = "rid";
     private static final String InclusivePropertyName = "inclusive";
+    private static final String SkipCountPropertyName = "skip";
     private static final Logger logger = LoggerFactory.getLogger(OrderByContinuationToken.class);
 
     public OrderByContinuationToken(CompositeContinuationToken compositeContinuationToken, QueryItem[] orderByItems,
-            String rid, boolean inclusive) {
+            String rid, boolean inclusive, int skipCount) {
         if (compositeContinuationToken == null) {
             throw new IllegalArgumentException("CompositeContinuationToken must not be null.");
         }
@@ -68,6 +69,7 @@ public final class OrderByContinuationToken extends JsonSerializable {
         this.setOrderByItems(orderByItems);
         this.setRid(rid);
         this.setInclusive(inclusive);
+        this.setSkip(skipCount);
     }
 
     private OrderByContinuationToken(String serializedOrderByContinuationToken) {
@@ -89,6 +91,7 @@ public final class OrderByContinuationToken extends JsonSerializable {
             orderByContinuationToken.getOrderByItems();
             orderByContinuationToken.getRid();
             orderByContinuationToken.getInclusive();
+            orderByContinuationToken.getSkip();
 
             outOrderByContinuationToken.v = orderByContinuationToken;
             parsed = true;
@@ -151,4 +154,9 @@ public final class OrderByContinuationToken extends JsonSerializable {
     private void setInclusive(boolean inclusive) {
         super.set(InclusivePropertyName, inclusive);
     }
+
+    private void setSkip(int skipCount) {super.set(SkipCountPropertyName, skipCount);}
+
+    public int getSkip() {return super.getInt(SkipCountPropertyName);}
+
 }

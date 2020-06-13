@@ -80,14 +80,19 @@ public abstract class ParallelDocumentQueryExecutionContextBase<T extends Resour
     protected void initialize(String collectionRid,
             Map<PartitionKeyRange, String> partitionKeyRangeToContinuationTokenMap, int initialPageSize,
             SqlQuerySpec querySpecForInit) {
+        System.out.println("inside intialization");
+
         this.pageSize = initialPageSize;
         Map<String, String> commonRequestHeaders = createCommonHeadersAsync(this.getFeedOptions(null, null));
 
         for (PartitionKeyRange targetRange : partitionKeyRangeToContinuationTokenMap.keySet()) {
+            System.out.println("targetRange: " + targetRange + "continuationTokenMap: " + partitionKeyRangeToContinuationTokenMap.get(targetRange));
 
             Func3<PartitionKeyRange, String, Integer, RxDocumentServiceRequest> createRequestFunc = (partitionKeyRange,
                     continuationToken, pageSize) -> {
                 Map<String, String> headers = new HashMap<>(commonRequestHeaders);
+                System.out.println("PartitionKeyRange is " + partitionKeyRange + "----- continuationToken passed in: " + continuationToken);
+
                 headers.put(HttpConstants.HttpHeaders.CONTINUATION, continuationToken);
                 headers.put(HttpConstants.HttpHeaders.PAGE_SIZE, Strings.toString(pageSize));
                 if(feedOptions.getPartitionKey() != null){

@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 import com.microsoft.azure.cosmosdb.PartitionKey;
@@ -176,7 +178,9 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
                         message);
             }
 
+
             orderByContinuationToken = outOrderByContinuationToken.v;
+            System.out.println("SkipCount: " + orderByContinuationToken.getSkip());
 
             CompositeContinuationToken compositeContinuationToken = orderByContinuationToken
                     .getCompositeContinuationToken();
@@ -196,7 +200,9 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
                     orderByExpressions);
 
             int targetIndex = targetIndexAndFilters.left;
-            targetRangeToOrderByContinuationTokenMap.put(String.valueOf(targetIndex), orderByContinuationToken);
+            System.out.println("Annie: " + "targetRange: " + partitionKeyRanges.get(targetIndex) + " targetIndex: " + targetIndex + " ContinuationToken: " + orderByContinuationToken);
+            targetRangeToOrderByContinuationTokenMap.put(partitionKeyRanges.get(targetIndex).getId(), orderByContinuationToken);
+           // System.out.println("Token map: " + targetRangeToOrderByContinuationTokenMap);
             FormattedFilterInfo formattedFilterInfo = targetIndexAndFilters.right;
 
             // Left
@@ -246,16 +252,16 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
         for (int i = startInclusive; i < endExclusive; i++) {
             PartitionKeyRange partitionKeyRange = partitionKeyRanges.get(i);
 
-            if (partitionKeyRange.getMinInclusive().compareTo(continuationToken.getCompositeContinuationToken().getRange().getMin()) >= 0
-                    && partitionKeyRange.getMaxExclusive().compareTo(continuationToken.getCompositeContinuationToken().getRange().getMax()) <= 0)
-            {
-                partitionKeyRangeToContinuationToken.put(partitionKeyRange,
-                        continuationToken.getCompositeContinuationToken().getToken());
-            }
-            else {
-                partitionKeyRangeToContinuationToken.put(partitionKeyRange, null);
-            }
-            //partitionKeyRangeToContinuationToken.put(partitionKeyRange, null);
+//            if (partitionKeyRange.getMinInclusive().compareTo(continuationToken.getCompositeContinuationToken().getRange().getMin()) >= 0
+//                    && partitionKeyRange.getMaxExclusive().compareTo(continuationToken.getCompositeContinuationToken().getRange().getMax()) <= 0)
+//            {
+//                partitionKeyRangeToContinuationToken.put(partitionKeyRange,
+//                        continuationToken.getCompositeContinuationToken().getToken());
+//            }
+//            else {
+//                partitionKeyRangeToContinuationToken.put(partitionKeyRange, null);
+//            }
+            partitionKeyRangeToContinuationToken.put(partitionKeyRange, null);
         }
 
         super.initialize(collectionRid,
@@ -426,14 +432,14 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
         private final RequestChargeTracker tracker;
         private final int maxPageSize;
         private final ConcurrentMap<String, QueryMetrics> queryMetricMap;
-        private final Function<OrderByRowResult<T>, String> orderByContinuationTokenCallback;
+        private final BiFunction<OrderByRowResult<T>, Integer, String> orderByContinuationTokenCallback;
         private volatile FeedResponse<OrderByRowResult<T>> previousPage;
 
         public ItemToPageTransformer(
                 RequestChargeTracker tracker,
                 int maxPageSize,
                 ConcurrentMap<String, QueryMetrics> queryMetricsMap,
-                Function<OrderByRowResult<T>, String> orderByContinuationTokenCallback) {
+                BiFunction<OrderByRowResult<T>, Integer, String> orderByContinuationTokenCallback) {
             this.tracker = tracker;
             this.maxPageSize = maxPageSize > 0 ? maxPageSize : DEFAULT_PAGE_SIZE;
             this.queryMetricMap = queryMetricsMap;
@@ -519,8 +525,15 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
                             page = current;
                             List<OrderByRowResult<T>> results = next.getResults();
                             OrderByRowResult<T> firstElementInNextPage = results.get(0);
+                            final AtomicInteger skipItems = new AtomicInteger();
+                            page.getResults().forEach(tOrderByRowResult -> {
+                                if (tOrderByRowResult.getSourcePartitionKeyRange().equals(firstElementInNextPage.getSourcePartitionKeyRange())) {
+                                    skipItems.incrementAndGet();
+                                }
+                            });
+
                             String orderByContinuationToken = this.orderByContinuationTokenCallback
-                                    .apply(firstElementInNextPage);
+                                    .apply(firstElementInNextPage, Integer.valueOf(skipItems.get()));
                             page = this.addOrderByContinuationToken(page,
                                     orderByContinuationToken);
                         }
@@ -581,8 +594,8 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
                 maxPageSize,
                 this.queryMetricMap,
                 (
-                        orderByRowResult) -> {
-                    return this.getContinuationToken(orderByRowResult);
+                        orderByRowResult, skipCounts) -> {
+                    return this.getContinuationToken(orderByRowResult, skipCounts);
                 }));
     }
 
@@ -592,7 +605,8 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
     }
 
     private String getContinuationToken(
-            OrderByRowResult<T> orderByRowResult) {
+            OrderByRowResult<T> orderByRowResult,
+            int skipCount) {
         // rid
         String rid = orderByRowResult.getResourceId();
 
@@ -612,7 +626,8 @@ public class OrderByDocumentQueryExecutionContext<T extends Resource>
         return new OrderByContinuationToken(compositeContinuationToken,
                 orderByItems,
                 rid,
-                inclusive).toJson();
+                inclusive,
+                skipCount).toJson();
     }
 
     private final class FormattedFilterInfo {

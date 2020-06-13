@@ -317,7 +317,8 @@ public class OrderbyDocumentQueryTest extends TestSuiteBase {
                             new Range<String>("A", "D", false, true)),
                     new QueryItem[] {new QueryItem("{\"item\" : 42}")},
                     "rid",
-                    false);
+                    false,
+                    0);
             String serialized = orderByContinuationToken.toString();
             ValueHolder<OrderByContinuationToken> outOrderByContinuationToken = new ValueHolder<OrderByContinuationToken>();
             
@@ -477,7 +478,8 @@ public class OrderbyDocumentQueryTest extends TestSuiteBase {
                             new Range<String>("A", "D", false, true)),
                     new QueryItem[] {new QueryItem("{\"item\" : 42}")},
                     "rid",
-                    false);
+                    false,
+                    0);
             options.setRequestContinuation(orderByContinuationToken.toString());
             Observable<FeedResponse<Document>> queryObservable = client.queryDocuments(getCollectionLink(), query,
                     options);
